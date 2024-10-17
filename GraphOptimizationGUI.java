@@ -1,8 +1,8 @@
-import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionListener;
 import java.util.*;
 import java.util.List;
+import javax.swing.*;
 
 public class GraphOptimizationGUI extends JFrame {
     private JTextField nodeNameField, nodeWeightField, edgeNode1Field, edgeNode2Field, edgeWeightField;
@@ -12,6 +12,7 @@ public class GraphOptimizationGUI extends JFrame {
     private Map<String, Integer> nodes = new HashMap<>();
     private Map<List<String>, Integer> edges = new HashMap<>();
     private Map<String, Point> nodePositions = new HashMap<>();
+    private static final int NODE_RADIUS = 20;
 
     public GraphOptimizationGUI() {
         setTitle("Graph Optimization");
@@ -68,9 +69,26 @@ public class GraphOptimizationGUI extends JFrame {
         String nodeName = nodeNameField.getText();
         int nodeWeight = Integer.parseInt(nodeWeightField.getText());
         nodes.put(nodeName, nodeWeight);
-        nodePositions.put(nodeName, new Point((nodes.size() * 50) % graphPanel.getWidth(), (nodes.size() * 50) % graphPanel.getHeight()));
+
+        // توزيع العقد في مركز الرسم مع تباعد بينها
+        int x, y;
+        do {
+            x = (int) (Math.random() * (graphPanel.getWidth() - 2 * NODE_RADIUS)) + NODE_RADIUS;
+            y = (int) (Math.random() * (graphPanel.getHeight() - 2 * NODE_RADIUS)) + NODE_RADIUS;
+        } while (isOverlapping(new Point(x, y)));
+
+        nodePositions.put(nodeName, new Point(x, y));
         resultsArea.append("Added Node: " + nodeName + " with weight " + nodeWeight + "\n");
         graphPanel.repaint();
+    }
+
+    private boolean isOverlapping(Point position) {
+        for (Point point : nodePositions.values()) {
+            if (point.distance(position) < 2 * NODE_RADIUS) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void addEdge() {
@@ -83,9 +101,41 @@ public class GraphOptimizationGUI extends JFrame {
             return;
         }
 
+        // Check for edge intersection
+        if (checkEdgeIntersection(node1, node2)) {
+            resultsArea.append("Error: Edge intersects with existing edges.\n");
+            return;
+        }
+
         edges.put(Arrays.asList(node1, node2), weight);
         resultsArea.append("Added Edge: " + node1 + " - " + node2 + " with weight " + weight + "\n");
         graphPanel.repaint();
+    }
+
+    private boolean checkEdgeIntersection(String node1, String node2) {
+        Point p1 = nodePositions.get(node1);
+        Point p2 = nodePositions.get(node2);
+
+        for (Map.Entry<List<String>, Integer> edgeEntry : edges.entrySet()) {
+            List<String> existingEdgeNodes = edgeEntry.getKey();
+            Point p3 = nodePositions.get(existingEdgeNodes.get(0));
+            Point p4 = nodePositions.get(existingEdgeNodes.get(1));
+
+            if (linesIntersect(p1, p2, p3, p4)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean linesIntersect(Point p1, Point p2, Point p3, Point p4) {
+        double det = (p1.x - p2.x) * (p3.y - p4.y) - (p3.x - p4.x) * (p1.y - p2.y);
+        if (det == 0) return false; // Lines are parallel
+
+        double lambda = ((p3.y - p4.y) * (p3.x - p1.x) + (p4.x - p3.x) * (p3.y - p1.y)) / det;
+        double gamma = ((p1.y - p2.y) * (p3.x - p1.x) + (p2.x - p1.x) * (p3.y - p1.y)) / det;
+
+        return (0 < lambda && lambda < 1) && (0 < gamma && gamma < 1);
     }
 
     private void setLimits() {
@@ -93,6 +143,7 @@ public class GraphOptimizationGUI extends JFrame {
             int lowerLimit = Integer.parseInt(lowerLimitField.getText());
             int upperLimit = Integer.parseInt(upperLimitField.getText());
             GraphOptimization.setLimits(lowerLimit, upperLimit);
+            // تحتاج إلى تنفيذ setLimits هنا
             resultsArea.append("Limits set: Lower Limit = " + lowerLimit + ", Upper Limit = " + upperLimit + "\n");
         } catch (NumberFormatException e) {
             resultsArea.append("Error: Limits must be numeric values.\n");
@@ -121,6 +172,7 @@ public class GraphOptimizationGUI extends JFrame {
         chartFrame.setVisible(true);
     }
 
+
     private JPanel createLabelRow(String labelText, JTextField textField) {
         JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
         panel.setBackground(Color.DARK_GRAY);
@@ -144,19 +196,22 @@ public class GraphOptimizationGUI extends JFrame {
         Graphics2D g2 = (Graphics2D) g;
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-        g2.setColor(Color.GRAY);
+        // رسم الحواف
+        g2.setColor(new Color(150, 150, 150)); // لون رمادي أفتح
         for (Map.Entry<List<String>, Integer> edgeEntry : edges.entrySet()) {
             List<String> edgeNodes = edgeEntry.getKey();
             Point p1 = nodePositions.get(edgeNodes.get(0));
             Point p2 = nodePositions.get(edgeNodes.get(1));
 
             if (p1 != null && p2 != null) {
+                g2.setStroke(new BasicStroke(2)); // سمك الخط
                 g2.drawLine(p1.x, p1.y, p2.x, p2.y);
                 String weightLabel = String.valueOf(edgeEntry.getValue());
                 g2.drawString(weightLabel, (p1.x + p2.x) / 2, (p1.y + p2.y) / 2);
             }
         }
 
+        // رسم العقد
         g2.setColor(Color.BLUE);
         for (Map.Entry<String, Integer> nodeEntry : nodes.entrySet()) {
             String nodeName = nodeEntry.getKey();
@@ -164,10 +219,11 @@ public class GraphOptimizationGUI extends JFrame {
             Point p = nodePositions.get(nodeName);
 
             if (p != null) {
-                g2.fillOval(p.x - 15, p.y - 15, 30, 30);
+                g2.fillOval(p.x - NODE_RADIUS, p.y - NODE_RADIUS, 2 * NODE_RADIUS, 2 * NODE_RADIUS); // حجم الدائرة
                 g2.setColor(Color.BLACK);
-                g2.drawOval(p.x - 15, p.y - 15, 30, 30);
-                g2.drawString(nodeName + " (" + nodeWeight + ")", p.x - 10, p.y - 20);
+                g2.drawOval(p.x - NODE_RADIUS, p.y - NODE_RADIUS, 2 * NODE_RADIUS, 2 * NODE_RADIUS);
+                g2.drawString(nodeName + " (" + nodeWeight + ")", p.x - 10, p.y - 30); // موضع النص أعلى العقدة
+                g2.setColor(Color.BLUE); // العودة إلى اللون الأزرق للعقد
             }
         }
     }
@@ -176,3 +232,4 @@ public class GraphOptimizationGUI extends JFrame {
         SwingUtilities.invokeLater(GraphOptimizationGUI::new);
     }
 }
+
